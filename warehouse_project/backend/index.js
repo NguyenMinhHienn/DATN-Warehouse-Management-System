@@ -23,6 +23,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const mysql = require('mysql2/promise');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
@@ -58,6 +59,84 @@ async function initDb() {
     process.exit(1);
   }
 }
+
+// -------------------------
+// API cho auth (SIGNUP & LOGIN)
+// -------------------------
+// POST /api/auth/signup - đăng ký tài khoản
+app.post('/api/auth/signup', async (req, res) => {
+  const { username, email, password, full_name, phone } = req.body;
+  
+  // validate input
+  if (!username || !email || !password || !full_name) {
+    return res.status(400).json({ success: false, error: 'Vui lòng nhập đầy đủ thông tin bắt buộc' });
+  }
+  
+  try {
+    // check username exist
+    const [existingUser] = await pool.query('SELECT user_id FROM users WHERE username = ? OR email = ?', [username, email]);
+    if (existingUser.length > 0) {
+      return res.status(400).json({ success: false, error: 'Tên đăng nhập hoặc email đã được sử dụng' });
+    }
+    
+    // hash password
+    const passwordHash = await bcrypt.hash(password, 10);
+    
+    // insert new user with default role_id = 3 (Warehouse Staff / User)
+    const [result] = await pool.query(
+      `INSERT INTO users (username, email, password_hash, full_name, phone, role_id, status)
+       VALUES (?, ?, ?, ?, ?, 3, 'active')`,
+      [username, email, passwordHash, full_name, phone || null]
+    );
+    
+    // return success with user info
+    res.status(201).json({ 
+      success: true, 
+      message: 'Đăng ký thành công',
+      data: { user_id: result.insertId, username, email, full_name, role: 'user' } 
+    });
+  } catch (err) {
+    console.error('POST /api/auth/signup error', err);
+    res.status(500).json({ success: false, error: 'Lỗi máy chủ khi đăng ký' });
+  }
+});
+
+// POST /api/auth/login - đăng nhập
+app.post('/api/auth/login', async (req, res) => {
+  const { username, password } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({ success: false, error: 'Vui lòng nhập tên đăng nhập và mật khẩu' });
+  }
+  
+  try {
+    const [rows] = await pool.query('SELECT user_id, username, email, full_name, password_hash, role_id FROM users WHERE username = ? OR email = ?', [username, username]);
+    
+    if (rows.length === 0) {
+      return res.status(401).json({ success: false, error: 'Tên đăng nhập hoặc mật khẩu không chính xác' });
+    }
+    
+    const user = rows[0];
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    
+    if (!passwordMatch) {
+      return res.status(401).json({ success: false, error: 'Tên đăng nhập hoặc mật khẩu không chính xác' });
+    }
+    
+    // map role_id to role name
+    const roleMap = { 1: 'admin', 2: 'manager', 3: 'user', 4: 'accountant' };
+    const role = roleMap[user.role_id] || 'user';
+    
+    res.json({ 
+      success: true, 
+      message: 'Đăng nhập thành công',
+      data: { name: user.full_name, role, username: user.username, email: user.email } 
+    });
+  } catch (err) {
+    console.error('POST /api/auth/login error', err);
+    res.status(500).json({ success: false, error: 'Lỗi máy chủ khi đăng nhập' });
+  }
+});
 
 // -------------------------
 // API cho products (CRUD)

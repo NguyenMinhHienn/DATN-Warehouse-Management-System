@@ -1,0 +1,17 @@
+{
+  "name": "workspace-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "cd warehouse_project && npm run dev",
+    "backend": "cd warehouse_project/backend && npm run dev",
+    "frontend": "cd warehouse_project/frontend && npm start",
+    "install-all": "cd warehouse_project && npm install && cd backend && npm install && cd ../frontend && npm install"
+  },
+  "dependencies": {
+    "react-router-dom": "^7.9.6"
+  },
+  "devDependencies": {
+    "@types/react-router-dom": "^5.3.3"
+  }
+}
